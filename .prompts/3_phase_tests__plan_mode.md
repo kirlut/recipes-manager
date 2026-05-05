@@ -7,7 +7,7 @@ Before planning:
    - Explore the current state of the repo.
 
 During planning:
-1. Confirm the planned approach in `.specs/ai_gen/implementation_plan.md` still fits the current codebase. Flag any divergences between the plan and reality. If any, confirm them with the user during planning using `AskUserQuestion` tool and update `.specs/ai_gen/implementation_plan.md` / `CLAUDE.md` to make it consistent with reality.
+1. Confirm the planned approach in `.specs/ai_gen/implementation_plan.md` and `.specs/ai_gen/testing_strategy.md` are still fits the current codebase. Flag any divergences between the plan and reality. If any, confirm them with the user during planning using `AskUserQuestion` tool and update `.specs/ai_gen/*.md` / `CLAUDE.md` to make it consistent with reality.
 2. Flag any ambiguities, missing details, or decisions that need to be made before test implementation starts.
 3. List the concrete files you will create or modify.
 4. List the test deliverables for this phase from the plan and testing strategy and decide on how you'll implement them.

@@ -37,8 +37,8 @@ Deliverables:
    - For tests you must create custom `docker-compose.yml` files inside test folders. If you need some test-specific configuration of the environment - do it there. For example, for testing the REST API you can create a `docker-compose.yml` with the backend app bound to the host's port (this won't be the case for the final deliverable).  
    - Tests-specific `docker-compose.yml` files must be completely independent from the root-level `docker-compose.yml`.
    - Never bind Docker ports to port 80 of the host. Use configurable (8080 by default) host port for exposing nginx
-   - Tests should only verify things testable via network connection. For example you can test api endpoints, healthchecks, connect to db (exposed in test-specific `docker-compose.yml`) to verify schema, etc. But you should never try to create tests requiring anything beyond a network connection to the component you're testing (e.g. manipulation of files on the host machine). 
-   - The only exception from the previous requirements is the final phase (integration and consolidation) where you'll use `pytest-playwright` to test the system e2e, mimicking a real user using the app via the frontend.
+   - Tests for infrastructure, backend and db phases should only verify things testable via network connection. For example you can test api endpoints, healthchecks, connect to db (exposed in test-specific `docker-compose.yml`) to verify schema, etc. But you should never try to create tests requiring anything beyond a network connection to the component you're testing (e.g. manipulation of files on the host machine). 
+   - For tests of frontend phases and final phase (integration and consolidation) you must use `pytest-playwright` to test the system e2e, mimicking a real user using the app via the frontend.
    - Tests should be independent of each other and runnable one by one in any order
    - When development is done, a single script to run all the tests should be created. All information required for running tests by agents should be added to `CLAUDE.md`
 
