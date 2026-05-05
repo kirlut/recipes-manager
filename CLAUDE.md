@@ -47,6 +47,17 @@ CLAUDE.md.
 - **Never bind a container to host port 80.** Expose nginx on a configurable
   host port, default `8080` (env var `HOST_PORT`).
 
+### Container runtime (podman)
+
+- `podman` and `podman compose` are already installed and correctly
+  configured on this machine. Treat them as fully operational.
+- **Do not** modify podman settings, reinstall it, or try to install Docker
+  Desktop / `docker` / `docker-compose` as alternatives.
+- If `docker compose up` (or `podman compose up`) fails, the cause is in
+  the Dockerfiles, compose files, or application code — investigate the
+  container/build logs and fix it there. Do not blame or reconfigure the
+  container runtime.
+
 ## Backend — `src/server`
 
 ### Code Organization (horizontal layers)
@@ -188,9 +199,14 @@ CLAUDE.md.
   `--keep-going` to continue past failures. The script works with either
   `docker compose` or `podman compose`; override the default with
   `COMPOSE="podman compose" ./run-all-tests.sh`.
-- One-time setup before frontend phases:
+- Test deps live in a **repo-root** `pyproject.toml` (separate from
+  `src/server/pyproject.toml`) under `[project.optional-dependencies].test`,
+  so `uv run pytest` from any `tests/phase-N-name/` directory finds the
+  project via uv's parent-directory lookup.
+- One-time setup, run from the **repo root**:
   ```
   uv sync --extra test
+  # Plus, before frontend phases (8-10):
   uv run playwright install chromium
   ```
 

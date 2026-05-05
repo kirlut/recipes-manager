@@ -104,8 +104,9 @@ containers and `GET http://localhost:8080/api/health` returns 200.
 .gitignore                              # py, node, .env, .venv, build artifacts
 docker-compose.yml                      # 3 services + uploads volume
 .env.example
+pyproject.toml                          # repo-root, tests-only; [project.optional-dependencies].test
 src/server/Dockerfile
-src/server/pyproject.toml                # uv-managed; deps: fastapi, uvicorn, asyncpg, sqlalchemy[asyncio], pydantic, pydantic-settings
+src/server/pyproject.toml                # uv-managed; runtime deps only: fastapi, uvicorn, asyncpg, sqlalchemy[asyncio], pydantic, pydantic-settings
 src/server/uv.lock
 src/server/main.py                       # FastAPI app, health router, startup hook
 src/server/api/__init__.py
@@ -133,8 +134,13 @@ tests/phase-1-infra/test_postgres_reachable.py
 
 - Run `uv init` (or write `pyproject.toml` directly) inside `src/server/`.
   Add `fastapi`, `uvicorn[standard]`, `sqlalchemy[asyncio]`, `asyncpg`,
-  `pydantic`, `pydantic-settings`, `python-multipart`. Test extras:
-  `pytest`, `pytest-asyncio`, `httpx`, `psycopg[binary]`.
+  `pydantic`, `pydantic-settings`, `python-multipart`.
+- Create a separate **repo-root** `pyproject.toml` carrying test-only
+  deps under `[project.optional-dependencies].test`: `pytest`,
+  `pytest-asyncio`, `httpx`, `psycopg[binary]`. This sits at the repo root
+  (not under `src/server/`) so `uv run pytest` from any `tests/phase-N-name/`
+  directory finds it via uv's parent-directory lookup. Install with
+  `uv sync --extra test` from the repo root.
 - Run `npm create vite@latest web -- --template react-ts` inside `src/client/`.
 - Add `.env.example` with `POSTGRES_*`, `JWT_SECRET=`, `IMAGE_DIR=/uploads`,
   `HOST_PORT=8080`, `SEARCH_SIMILARITY_THRESHOLD=0.3`. Document that the
