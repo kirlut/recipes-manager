@@ -1,13 +1,34 @@
 # Project Guidelines
 
-Rules below are derived from `.specs/system_spec.md`. Refer to that spec for the full system design, data model, and business rules not captured here.
+This file is loaded into every Claude Code session. Keep it scannable and
+short. Anything that doesn't fit belongs in the dedicated specs.
+
+## Sources of truth
+
+- `.specs/system_spec.md` — original product spec; data model and business
+  rules.
+- `.specs/ai_gen/api_spec.md` — REST API contract.
+- `.specs/ai_gen/db_schema.md` — Postgres schema (DDL lives in
+  `src/server/dal/schema.sql`; spec doc explains it).
+- `.specs/ai_gen/implementation_plan.md` — phased build order. Always work
+  inside the current phase's scope.
+- `.specs/ai_gen/testing_strategy.md` — test layout and conventions.
+
+If any of those documents conflict with this CLAUDE.md, the spec wins; fix
+CLAUDE.md.
 
 ## Repository Layout
 
-- `src/client/` — frontend app + nginx. Has its own `Dockerfile`. All nginx files live here.
+- `src/client/` — frontend app + nginx. Has its own `Dockerfile`. All nginx
+  files live here.
 - `src/server/` — Python backend. Has its own `Dockerfile`.
 - `docker-compose.yml` — at repo root.
-- `.env` — at repo root.
+- `.env` — at repo root (copy from `.env.example`).
+- `.specs/` — system spec + generated specs under `.specs/ai_gen/`.
+- `tests/phase-{N}-{name}/` — integration tests, one folder per
+  implementation phase. Each folder owns an isolated `docker-compose.yml`.
+- `run-all-tests.sh` — single entrypoint to run the whole test suite (added
+  in phase 10).
 
 ## Components & Deployment
 
@@ -15,27 +36,40 @@ Rules below are derived from `.specs/system_spec.md`. Refer to that spec for the
   - nginx + frontend statics (single container).
   - Python backend (separate container).
   - Postgres (separate container).
-- A Docker volume for image storage is shared between the client container and the backend container.
-- The backend is reachable **only** via nginx within the Docker network; it must not be exposed externally.
-- nginx routing: `/api` → backend, `/uploads` → shared image volume, `/` → frontend statics.
-- All base Docker images must be official packages from Docker Hub. No custom or third-party base images.
-- Never bind a container to host port 80. Expose nginx on a configurable host port, default `8080`.
+- A Docker volume for image storage is shared between the client container
+  and the backend container.
+- The backend is reachable **only** via nginx within the Docker network; it
+  must not be exposed externally in the production compose.
+- nginx routing: `/api` → backend, `/uploads` → shared image volume, `/` →
+  frontend statics.
+- All base Docker images must be official packages from Docker Hub. No
+  custom or third-party base images.
+- **Never bind a container to host port 80.** Expose nginx on a configurable
+  host port, default `8080` (env var `HOST_PORT`).
 
 ## Backend — `src/server`
 
 ### Code Organization (horizontal layers)
 
-- `api/` — FastAPI endpoints. One file per entity. Use `APIRouter` and register routers via `app.include_router` in the entrypoint.
+- `api/` — FastAPI endpoints. One file per entity. Use `APIRouter` and
+  register routers via `app.include_router(prefix="/api")` in the entrypoint.
 - `services/` — business logic; split by entity / core abstraction.
-- `dal/` — all database access.
-- Entrypoint script lives at the root of `src/server`. It reads config, initializes components, and keeps the app running.
-- Class and abstraction names must follow the entity vocabulary defined in `.specs/system_spec.md` §5.1.
+- `dal/` — all database access. SQLAlchemy Core only.
+- `dal/schema.sql` — single-source-of-truth DDL, executed idempotently at
+  startup by `init_schema()`.
+- Entrypoint (`main.py`) lives at the root of `src/server`. It reads config,
+  configures logging, runs `init_schema()`, registers routers, and starts
+  the FastAPI app.
+- Class and abstraction names must follow the entity vocabulary in
+  `.specs/system_spec.md` §5.1.
 
 ### Stack
 
 - FastAPI as the web framework.
 - `pydantic` for type safety and validation.
-- SQLAlchemy with async support: `sqlalchemy[asyncio]` + `asyncpg`. Use SQLAlchemy **Core**, not the ORM.
+- SQLAlchemy with async support: `sqlalchemy[asyncio]` + `asyncpg`. Use
+  SQLAlchemy **Core**, not the ORM.
+- `pyjwt` for JWT, `bcrypt` for password hashing.
 
 ### Packages & Local Run
 
@@ -45,40 +79,130 @@ Rules below are derived from `.specs/system_spec.md`. Refer to that spec for the
 
 ### Database
 
-- Postgres.
+- Postgres ≥ 14.
 - `snake_case` for all table and column names.
-- All `id` fields are `BIGINT`.
-- Recipe and product `name` columns are indexed with `GIST` on `pg_trgm`. The `pg_trgm` extension is required. Search uses `similarity()` with a configurable threshold.
-- Schema is initialized on app startup if not already present. No DB migration tooling.
+- All entity `id` fields are `BIGINT GENERATED BY DEFAULT AS IDENTITY`.
+  Junction tables (`product_nutrition_facts`, `recipe_products`,
+  `recipe_stars`, `product_stars`) have no surrogate id; composite primary
+  keys instead.
+- Recipe Product PK is `(recipe_id, product_id)`: a product appears at most
+  once per recipe.
+- Recipe and product `name` columns are indexed with `GIST` on `pg_trgm`.
+  The `pg_trgm` extension is required. Search uses `similarity()` with the
+  threshold from `SEARCH_SIMILARITY_THRESHOLD` (default `0.3`).
+- Schema is initialized on app startup. No DB migration tooling. Re-running
+  the schema SQL must be a no-op.
+
+### API conventions (Zalando)
+
+- Plural resources, kebab-case for multi-word path segments
+  (`/nutrition-fact-types`, `/shopping-list`).
+- `snake_case` for JSON property names and query parameters.
+- Cursor-based pagination on every list endpoint: opaque base64url `cursor`,
+  `limit` (default 20, max 100). Response envelope is
+  `{"items": [...], "self": "...", "next": "..."}` with `next` omitted on
+  the last page.
+- All errors return `application/problem+json` (RFC 9457). The error `type`
+  URI registry is in `.specs/ai_gen/api_spec.md` §4.1.
+- Timestamps in ISO 8601 / RFC 3339 UTC (`Z` suffix).
 
 ### Auth & Security
 
-- Passwords hashed with salt using `bcrypt`.
-- JWT auth using HS256. Use `pyjwt` for token handling and signature checks.
+- Passwords hashed with salt using `bcrypt`, cost factor `12`.
+- JWT HS256, single token, 24h TTL. No refresh tokens.
+- JWT secret read from env var `JWT_SECRET` (≥ 32 bytes recommended).
+  Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+- `Authorization: Bearer <jwt>` header on every protected endpoint.
 
 ### Image Uploads
 
-- Accept JPEG and PNG only; reject other formats.
-- Max file size: 5 MB.
-- Stored filenames are UUID4 with the original extension preserved (e.g. `a3f1b2c4-...-.jpg`).
-- Files are written to the shared Docker volume and served by nginx at `/uploads`.
+- Accept JPEG and PNG only; reject other formats. MIME detection is by
+  reading the file header, not by trusting `Content-Type` of the part.
+- Max file size: 5 MB → `413 Payload Too Large` if exceeded.
+- Stored filenames are UUID4 with the original extension preserved (e.g.
+  `a3f1b2c4-...-.jpg`).
+- Files are written to the shared Docker volume (`IMAGE_DIR`) and served by
+  nginx at `/uploads`.
+- When a product or recipe that references an image is deleted, the file is
+  **not** removed (other entities may share the filename, e.g. via copy).
+  Orphan cleanup is out-of-scope for v1.
 
 ### Configuration
 
-- Env vars only, with `.env` file support.
-- Configurable items: DB connection settings, HS256 JWT secret, path to the image folder (mounted to the volume).
+- Env vars only, with `.env` file support. Required:
+
+| Var | Purpose | Example |
+|---|---|---|
+| `POSTGRES_HOST` | DB host | `postgres` |
+| `POSTGRES_PORT` | DB port | `5432` |
+| `POSTGRES_USER` | DB user | `recipes` |
+| `POSTGRES_PASSWORD` | DB password | (set in `.env`) |
+| `POSTGRES_DB` | DB name | `recipes` |
+| `JWT_SECRET` | HS256 secret (≥ 32 bytes) | `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `IMAGE_DIR` | Path to image volume | `/uploads` |
+| `HOST_PORT` | Host port for nginx | `8080` |
+| `SEARCH_SIMILARITY_THRESHOLD` | pg_trgm threshold | `0.3` |
+| `LOG_LEVEL` | Root log level | `INFO` |
 
 ### Logging
 
-- Structured JSON to stdout. Use the standard library `logging` module.
+- Structured JSON to stdout. Use the standard library `logging` module
+  configured via `logging.config.dictConfig`. No third-party logging libs.
 
 ## Frontend — `src/client`
 
-- Frontend framework choice is open — pick something simple and reliable.
-- Organize code according to best practices for the chosen framework.
-- Layout must work and adapt automatically to both regular and mobile screens.
-- List views use cursor-based pagination; the frontend implements infinite scroll on top of it.
+- **Stack**: React 18 + Vite + TypeScript + React Router + TanStack Query
+  (`@tanstack/react-query`) + Tailwind CSS + DaisyUI.
+- App code under `src/client/web/src/` (Vite project root is
+  `src/client/web/`).
+- Production build: `npm run build` outputs to `src/client/web/dist/`,
+  copied into the nginx image during `docker build`.
+- Layout must adapt to both regular and mobile screens (DaisyUI handles
+  most of this; verify with phase-8 tests at small viewports).
+- List views use cursor-based pagination; the frontend implements infinite
+  scroll on top of it (intersection-observer based).
+- JWT is stored in `localStorage` under key `auth_token`. A 401 from any
+  API call clears the token and redirects to `/login`.
+- Error rendering: read Problem+JSON `title`, `detail`, and
+  `extensions.violations` (when present) into a single shared `ErrorBanner`
+  component.
+
+## Testing
+
+- **Integration tests only** — no unit tests of internal classes/functions.
+- Layout: `tests/phase-{N}-{kebab-name}/` mirrors the phase numbers in
+  `.specs/ai_gen/implementation_plan.md`.
+- Each test folder owns a self-contained `docker-compose.yml`, completely
+  independent from the root compose. Use a distinct `name:` (e.g.
+  `recipes-manager-test-phase-3-auth`) and distinct named volumes.
+- Backend phases (3-7) may bind the FastAPI service directly to a host port
+  in the test compose for direct API testing — the production compose does
+  not do this.
+- Frontend phases (8, 9) and the final E2E phase (10) use `pytest-playwright`
+  against the full production-shaped stack.
+- **Never bind to host port 80**, including in test composes.
+- Tests must be independent — runnable in any order, individually or as a
+  suite. A `truncate_all_tables` autouse fixture wipes user-generated rows
+  between tests; seeded `nutrition_fact_types` rows are preserved.
+- Run the full suite via `./run-all-tests.sh` (added in phase 10). Add
+  `--keep-going` to continue past failures. The script works with either
+  `docker compose` or `podman compose`; override the default with
+  `COMPOSE="podman compose" ./run-all-tests.sh`.
+- One-time setup before frontend phases:
+  ```
+  uv sync --extra test
+  uv run playwright install chromium
+  ```
 
 ## Out of Scope (v1)
 
-Do not introduce: a caching layer (e.g. Redis), DB migration tooling, or external dataset import (despite the `import_source` column existing in the data model).
+Do not introduce:
+
+- A caching layer (e.g. Redis).
+- DB migration tooling (schema init on startup is sufficient).
+- External dataset import (despite the `import_source` column existing in
+  the data model).
+- Email verification, password reset, social login.
+- Recipe rating, comments, tags/categories.
+- Admin panel.
+- Token refresh flow (single 24h JWT, re-login on expiry).
