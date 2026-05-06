@@ -185,7 +185,7 @@ add more.
 Stack: postgres + backend + nginx (production-shaped).
 
 - `test_healthcheck.py` — `GET http://localhost:8080/api/health` → 200 with `{"status":"ok"}`.
-- `test_nginx_routing.py` — `GET /api/<unknown>` returns whatever the backend says (404 with Problem+JSON), confirming the `/api` proxy. `GET /uploads/missing.jpg` returns 404 from nginx (no backend involvement).
+- `test_nginx_routing.py` — `GET /api/<unknown>` returns 404 from the backend, confirming the `/api` proxy. (Body shape is not asserted in phase 1; the Problem+JSON middleware is introduced in phase 3, where it is verified.) `GET /uploads/missing.jpg` returns 404 from nginx (no backend involvement) — distinguishable by the `text/html` content-type of nginx's default 404 page versus the backend's JSON.
 - `test_postgres_reachable.py` — connect via `psycopg` to the test compose Postgres (using its host-bound port), execute `SELECT 1`. Confirms image, env, and networking are wired.
 
 ### Phase 2 — `tests/phase-2-db/`

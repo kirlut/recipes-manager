@@ -63,7 +63,10 @@ CLAUDE.md.
 ### Code Organization (horizontal layers)
 
 - `api/` — FastAPI endpoints. One file per entity. Use `APIRouter` and
-  register routers via `app.include_router(prefix="/api")` in the entrypoint.
+  register routers via `app.include_router(...)` in the entrypoint —
+  **without** a `prefix` argument. The public `/api/*` URL space is produced
+  by nginx (which strips `/api/` before forwarding); backend routes are
+  unprefixed (e.g. `@router.get("/health")`). See `.specs/ai_gen/api_spec.md` §1.1.
 - `services/` — business logic; split by entity / core abstraction.
 - `dal/` — all database access. SQLAlchemy Core only.
 - `dal/schema.sql` — single-source-of-truth DDL, executed idempotently at
