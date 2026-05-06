@@ -30,6 +30,8 @@ ERROR_CONFLICT_USERNAME = f"{_BASE_URI}/conflict-username"
 ERROR_CONFLICT = f"{_BASE_URI}/conflict"
 ERROR_PAYLOAD_TOO_LARGE = f"{_BASE_URI}/payload-too-large"
 ERROR_UNSUPPORTED_MEDIA_TYPE = f"{_BASE_URI}/unsupported-media-type"
+ERROR_NO_NUTRITION_FACTS = f"{_BASE_URI}/no-nutrition-facts"
+ERROR_DUPLICATE_NUTRITION_FACT = f"{_BASE_URI}/duplicate-nutrition-fact"
 ERROR_INTERNAL = f"{_BASE_URI}/internal"
 
 # HTTP status -> default registry URI for generic StarletteHTTPException
@@ -96,6 +98,66 @@ class ConflictUsernameError(AppError):
     type_uri = ERROR_CONFLICT_USERNAME
     status = 409
     title = "Username already taken"
+
+
+class NotFoundError(AppError):
+    type_uri = ERROR_NOT_FOUND
+    status = 404
+    title = "Not found"
+
+
+class ForbiddenNotOwnerError(AppError):
+    type_uri = ERROR_FORBIDDEN_NOT_OWNER
+    status = 403
+    title = "Forbidden"
+
+
+class NoNutritionFactsError(AppError):
+    type_uri = ERROR_NO_NUTRITION_FACTS
+    status = 422
+    title = "Product must have at least one nutrition fact"
+
+
+class DuplicateNutritionFactError(AppError):
+    type_uri = ERROR_DUPLICATE_NUTRITION_FACT
+    status = 422
+    title = "Duplicate nutrition fact"
+
+
+class PayloadTooLargeError(AppError):
+    type_uri = ERROR_PAYLOAD_TOO_LARGE
+    status = 413
+    title = "Payload too large"
+
+
+class UnsupportedMediaTypeError(AppError):
+    type_uri = ERROR_UNSUPPORTED_MEDIA_TYPE
+    status = 415
+    title = "Unsupported media type"
+
+
+class ServiceValidationError(AppError):
+    """Service-layer validation failure rendered as 422 + `/errors/validation`.
+
+    Distinct from Pydantic's 400 + `/errors/validation`: same `type` URI,
+    different status, used for semantic checks that depend on DB state
+    (e.g. unknown `nutrition_fact_id`).
+    """
+
+    type_uri = ERROR_VALIDATION
+    status = 422
+    title = "Validation failed"
+
+    def __init__(
+        self,
+        detail: str = "",
+        *,
+        violations: list[dict[str, Any]] | None = None,
+    ) -> None:
+        ext: dict[str, Any] | None = None
+        if violations is not None:
+            ext = {"violations": violations}
+        super().__init__(detail or self.title, extensions=ext)
 
 
 def _problem_response(body: dict[str, Any], status: int) -> JSONResponse:
