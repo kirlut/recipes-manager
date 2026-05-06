@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     bcrypt_cost: int = 12
 
     image_dir: str = "/uploads"
+    image_max_bytes: int = 5 * 1024 * 1024
     search_similarity_threshold: float = 0.3
     log_level: str = "INFO"
 
