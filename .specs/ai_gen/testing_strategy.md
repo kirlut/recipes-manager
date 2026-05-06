@@ -254,7 +254,8 @@ Stack: postgres + backend + nginx + frontend (full production-shaped on
 - `test_search_products.py` — User A creates a product; User B logs in; in "Search", types the name; result list shows it; B clicks star; "My Starred Products" contains it.
 - `test_edit_own_product.py` — owner can edit; confirm new value appears.
 - `test_copy_other_users_product.py` — User B opens A's product, "Edit" is disabled / not shown, "Copy" button is shown; clicking "Copy" creates a new product in B's "My Products" with the same image and facts.
-- `test_infinite_scroll.py` — seed 30 products, scroll the list, assert at least three "page" worth of items load.
+- `test_infinite_scroll.py` — seed 50 products, scroll the list, assert at least three "page" worth of items load. (50 — not 30 — since the API's default `limit=20` per §5.1 yields three fetches only above 40 items.)
+- `test_mobile_layout.py` — at a 360x640 viewport, the desktop sidebar is hidden and a hamburger menu opens a navigation drawer with the section links. Confirms CLAUDE.md's "Layout must adapt to both regular and mobile screens".
 
 ### Phase 9 — `tests/phase-9-frontend-recipes-and-shopping/`
 

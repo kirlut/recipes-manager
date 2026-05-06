@@ -545,7 +545,10 @@ products section. Listing/search/starring/copying products all work end-to-end.
 - Auth flow: `/login` and `/register` post to the backend, store the
   resulting token in `localStorage` under key `auth_token`, store user info
   in a React Query cache. A 401 response from any API call clears the token
-  and bounces to `/login`.
+  and bounces to `/login`. A visible Logout affordance (a button or menu
+  item with accessible name matching `/log\s*out/i`) clears the token from
+  `localStorage` and redirects to `/login`. May live directly in the top
+  app bar or inside a user-menu opened by clicking the username.
 - Products section:
   - List views with infinite-scroll (intersection observer) for My, Starred,
     Search.
@@ -596,6 +599,7 @@ tests/phase-8-frontend-products/test_search_products.py
 tests/phase-8-frontend-products/test_edit_own_product.py
 tests/phase-8-frontend-products/test_copy_other_users_product.py
 tests/phase-8-frontend-products/test_infinite_scroll.py
+tests/phase-8-frontend-products/test_mobile_layout.py
 ```
 
 ### Phase-specific setup
