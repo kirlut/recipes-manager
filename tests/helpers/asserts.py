@@ -38,6 +38,8 @@ ERROR_PAYLOAD_TOO_LARGE = f"{_ERROR_BASE}/payload-too-large"
 ERROR_UNSUPPORTED_MEDIA_TYPE = f"{_ERROR_BASE}/unsupported-media-type"
 ERROR_NO_NUTRITION_FACTS = f"{_ERROR_BASE}/no-nutrition-facts"
 ERROR_DUPLICATE_NUTRITION_FACT = f"{_ERROR_BASE}/duplicate-nutrition-fact"
+ERROR_QUANTITY_TYPE_MISMATCH = f"{_ERROR_BASE}/quantity-type-mismatch"
+ERROR_DUPLICATE_RECIPE_PRODUCT = f"{_ERROR_BASE}/duplicate-recipe-product"
 ERROR_INTERNAL = f"{_ERROR_BASE}/internal"
 
 
@@ -75,3 +77,40 @@ def assert_iso_8601_z(value: Any, *, field: str) -> None:
     assert isinstance(value, str) and ISO_8601_Z_RE.match(value), (
         f"{field} must be ISO-8601 UTC with Z suffix, got {value!r}"
     )
+
+
+def assert_pagination_envelope(
+    body: Any, *, expect_next: bool
+) -> dict[str, Any]:
+    """Assert the cursor-pagination envelope shape per api_spec §5.2.
+
+    - `items` is a list.
+    - `self` is a non-empty string.
+    - `next` is a non-empty string when `expect_next=True`, and is
+      **absent** (not null, not empty) when `expect_next=False` — the
+      spec specifies omission rather than null on the last page.
+
+    Returns the validated body for follow-up assertions.
+    """
+    assert isinstance(body, dict), (
+        f"List response must be a JSON object, got {type(body).__name__}: {body!r}"
+    )
+    assert isinstance(body.get("items"), list), (
+        f"Pagination envelope must have an `items` list, got {body!r}"
+    )
+    self_url = body.get("self")
+    assert isinstance(self_url, str) and self_url, (
+        f"Pagination envelope must have a non-empty `self` URL, got {body!r}"
+    )
+    if expect_next:
+        next_url = body.get("next")
+        assert isinstance(next_url, str) and next_url, (
+            f"Pagination envelope must have a non-empty `next` URL when more "
+            f"pages remain, got {body!r}"
+        )
+    else:
+        assert "next" not in body, (
+            f"Last page must omit the `next` field entirely "
+            f"(api_spec §5.2), got {body!r}"
+        )
+    return body

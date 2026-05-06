@@ -204,3 +204,267 @@ def uploads_image_no_part(
         headers=_auth_headers(token),
         timeout=_TIMEOUT,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 helpers — recipes.
+# ---------------------------------------------------------------------------
+
+
+def recipes_create(
+    base_url: str,
+    *,
+    token: str | None,
+    body: dict[str, Any],
+) -> httpx.Response:
+    """POST /recipes — see api_spec §7.1.
+
+    `body` is sent verbatim so tests can exercise validation paths
+    (missing fields, duplicate product_id, etc.) without normalisation.
+    """
+    return httpx.post(
+        f"{base_url}/recipes",
+        json=body,
+        headers=_auth_headers(token),
+        timeout=_TIMEOUT,
+    )
+
+
+def recipes_get(
+    base_url: str,
+    *,
+    token: str | None,
+    recipe_id: int,
+) -> httpx.Response:
+    """GET /recipes/{id} — see api_spec §7.2."""
+    return httpx.get(
+        f"{base_url}/recipes/{recipe_id}",
+        headers=_auth_headers(token),
+        timeout=_TIMEOUT,
+    )
+
+
+def recipes_update(
+    base_url: str,
+    *,
+    token: str | None,
+    recipe_id: int,
+    body: dict[str, Any],
+) -> httpx.Response:
+    """PUT /recipes/{id} — see api_spec §7.3."""
+    return httpx.put(
+        f"{base_url}/recipes/{recipe_id}",
+        json=body,
+        headers=_auth_headers(token),
+        timeout=_TIMEOUT,
+    )
+
+
+def recipes_delete(
+    base_url: str,
+    *,
+    token: str | None,
+    recipe_id: int,
+) -> httpx.Response:
+    """DELETE /recipes/{id} — see api_spec §7.4."""
+    return httpx.delete(
+        f"{base_url}/recipes/{recipe_id}",
+        headers=_auth_headers(token),
+        timeout=_TIMEOUT,
+    )
+
+
+def recipes_copy(
+    base_url: str,
+    *,
+    token: str | None,
+    recipe_id: int,
+) -> httpx.Response:
+    """POST /recipes/{id}/copy with empty body, per api_spec §7.5."""
+    return httpx.post(
+        f"{base_url}/recipes/{recipe_id}/copy",
+        json={},
+        headers=_auth_headers(token),
+        timeout=_TIMEOUT,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 helpers — listing + search + pagination + starring.
+# ---------------------------------------------------------------------------
+
+
+def _list_params(
+    *,
+    scope: Any = _OMIT,
+    q: Any = _OMIT,
+    cursor: Any = _OMIT,
+    limit: Any = _OMIT,
+) -> list[tuple[str, str]]:
+    """Build the query-param list, omitting `_OMIT` entries.
+
+    Sentinel-based to let tests pass `scope=""` or `q=""` deliberately
+    (different from "field absent"). A list-of-tuples is used over a
+    dict so duplicate keys could be sent if a future test needed it.
+    """
+    params: list[tuple[str, str]] = []
+    if scope is not _OMIT:
+        params.append(("scope", str(scope)))
+    if q is not _OMIT:
+        params.append(("q", str(q)))
+    if cursor is not _OMIT:
+        params.append(("cursor", str(cursor)))
+    if limit is not _OMIT:
+        params.append(("limit", str(limit)))
+    return params
+
+
+def products_list(
+    base_url: str,
+    *,
+    token: str | None,
+    scope: Any = _OMIT,
+    q: Any = _OMIT,
+    cursor: Any = _OMIT,
+    limit: Any = _OMIT,
+) -> httpx.Response:
+    """GET /products with cursor pagination (api_spec §5, §6.6).
+
+    Any parameter left as the `_OMIT` sentinel is not sent at all, so
+    tests can exercise the "missing required param" validation paths.
+    """
+    return httpx.get(
+        f"{base_url}/products",
+        params=_list_params(scope=scope, q=q, cursor=cursor, limit=limit),
+        headers=_auth_headers(token),
+        timeout=_TIMEOUT,
+    )
+
+
+def recipes_list(
+    base_url: str,
+    *,
+    token: str | None,
+    scope: Any = _OMIT,
+    q: Any = _OMIT,
+    cursor: Any = _OMIT,
+    limit: Any = _OMIT,
+) -> httpx.Response:
+    """GET /recipes with cursor pagination (api_spec §5, §7.6)."""
+    return httpx.get(
+        f"{base_url}/recipes",
+        params=_list_params(scope=scope, q=q, cursor=cursor, limit=limit),
+        headers=_auth_headers(token),
+        timeout=_TIMEOUT,
+    )
+
+
+def list_follow_next(
+    base_url: str,
+    *,
+    token: str | None,
+    next_url: str,
+) -> httpx.Response:
+    """Follow the `next` URL from a paginated list response.
+
+    `api_spec.md` §5.2 returns `next` as a path-style URL (e.g.
+    `/api/products?cursor=…&limit=10` or `/products?cursor=…&limit=10`,
+    depending on whether the backend prefixes its emitted URLs).
+    Backend-only test phases hit FastAPI directly without nginx, so
+    we strip an optional leading `/api` before joining onto `base_url`.
+    """
+    path = next_url
+    if path.startswith("http://") or path.startswith("https://"):
+        # Absolute URL; use verbatim.
+        return httpx.get(path, headers=_auth_headers(token), timeout=_TIMEOUT)
+    if path.startswith("/api/"):
+        path = path[len("/api") :]  # leaves the leading `/`
+    if not path.startswith("/"):
+        path = "/" + path
+    return httpx.get(
+        f"{base_url}{path}",
+        headers=_auth_headers(token),
+        timeout=_TIMEOUT,
+    )
+
+
+def products_star(
+    base_url: str,
+    *,
+    token: str | None,
+    product_id: int,
+) -> httpx.Response:
+    """PUT /products/{id}/star — idempotent star (api_spec §8.2)."""
+    return httpx.put(
+        f"{base_url}/products/{product_id}/star",
+        headers=_auth_headers(token),
+        timeout=_TIMEOUT,
+    )
+
+
+def products_unstar(
+    base_url: str,
+    *,
+    token: str | None,
+    product_id: int,
+) -> httpx.Response:
+    """DELETE /products/{id}/star — idempotent unstar (api_spec §8.2)."""
+    return httpx.delete(
+        f"{base_url}/products/{product_id}/star",
+        headers=_auth_headers(token),
+        timeout=_TIMEOUT,
+    )
+
+
+def recipes_star(
+    base_url: str,
+    *,
+    token: str | None,
+    recipe_id: int,
+) -> httpx.Response:
+    """PUT /recipes/{id}/star — idempotent star (api_spec §8.1)."""
+    return httpx.put(
+        f"{base_url}/recipes/{recipe_id}/star",
+        headers=_auth_headers(token),
+        timeout=_TIMEOUT,
+    )
+
+
+def recipes_unstar(
+    base_url: str,
+    *,
+    token: str | None,
+    recipe_id: int,
+) -> httpx.Response:
+    """DELETE /recipes/{id}/star — idempotent unstar (api_spec §8.1)."""
+    return httpx.delete(
+        f"{base_url}/recipes/{recipe_id}/star",
+        headers=_auth_headers(token),
+        timeout=_TIMEOUT,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 7 helpers — shopping list.
+# ---------------------------------------------------------------------------
+
+
+def shopping_list_compute(
+    base_url: str,
+    *,
+    token: str | None,
+    body: dict[str, Any],
+) -> httpx.Response:
+    """POST /shopping-list — see api_spec §9.1.
+
+    `body` is sent verbatim so tests can exercise validation paths
+    (empty items, missing items, duplicate recipe_id, servings <= 0,
+    unknown recipe_id, not-accessible recipe_id, etc.) without
+    normalisation.
+    """
+    return httpx.post(
+        f"{base_url}/shopping-list",
+        json=body,
+        headers=_auth_headers(token),
+        timeout=_TIMEOUT,
+    )

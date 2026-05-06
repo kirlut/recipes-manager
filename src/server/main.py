@@ -4,7 +4,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from api import auth, health, nutrition_fact_types, products, uploads
+from api import (
+    auth,
+    health,
+    nutrition_fact_types,
+    products,
+    recipes,
+    shopping_list,
+    uploads,
+)
 from api.errors import register_exception_handlers
 from dal import db
 from logging_config import configure_logging
@@ -38,4 +46,6 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(nutrition_fact_types.router)
 app.include_router(products.router)
+app.include_router(recipes.router)
+app.include_router(shopping_list.router)
 app.include_router(uploads.router)

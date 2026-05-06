@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -12,8 +13,11 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    and_,
     delete,
+    func,
     insert,
+    or_,
     select,
     update,
 )
@@ -21,6 +25,7 @@ from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from dal.nutrition_fact_types import nutrition_fact_types_table
+from dal.stars import product_stars_table
 from dal.users import users_table
 
 _metadata = MetaData()
@@ -236,3 +241,201 @@ async def _list_facts(conn: AsyncConnection, product_id: int) -> list[dict]:
 async def list_facts(conn: AsyncConnection, product_id: int) -> list[dict]:
     """Public wrapper around _list_facts for the copy path."""
     return await _list_facts(conn, product_id)
+
+
+async def is_starred_by(
+    conn: AsyncConnection, *, user_id: int, product_id: int
+) -> bool:
+    """Per-caller star check used to populate `starred_by_me` on detail
+    responses (`api_spec.md` §3.5)."""
+    s = product_stars_table
+    stmt = select(s.c.user_id).where(
+        s.c.user_id == user_id, s.c.product_id == product_id
+    )
+    return (await conn.execute(stmt)).first() is not None
+
+
+def _list_item_columns(caller_user_id: int):
+    """Columns shared by all three list query builders.
+
+    Yields rows shaped for `ProductListItem` (no embedded nutrition
+    facts; per `api_spec.md` §6.6) plus the per-caller `starred_by_me`
+    flag computed by an EXISTS subquery against `product_stars`.
+
+    The EXISTS subquery is explicitly correlated with `products` only —
+    when the outer query is `scope=starred` it also has `product_stars`
+    in its FROM clause, and without an explicit `correlate()` SQLAlchemy
+    would auto-correlate the inner `product_stars` reference too,
+    leaving the subquery with no FROM clauses (`InvalidRequestError`).
+    """
+    p = products_table
+    u = users_table
+    s = product_stars_table
+    starred_by_me = (
+        select(s.c.user_id)
+        .select_from(s)
+        .where(s.c.user_id == caller_user_id, s.c.product_id == p.c.id)
+        .correlate(p)
+        .exists()
+    )
+    return [
+        p.c.id,
+        p.c.name,
+        p.c.image_filename,
+        p.c.import_source,
+        p.c.created_at,
+        u.c.id.label("user_id"),
+        u.c.username,
+        u.c.full_name,
+        starred_by_me.label("starred_by_me"),
+    ]
+
+
+def _row_to_list_item(row: Any) -> dict:
+    """Shape a list-query row into the `ProductListItem` dict."""
+    created_by: dict | None
+    if row["user_id"] is not None:
+        created_by = {
+            "id": row["user_id"],
+            "username": row["username"],
+            "full_name": row["full_name"],
+        }
+    else:
+        created_by = None
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "image_filename": row["image_filename"],
+        "created_by": created_by,
+        "import_source": row["import_source"],
+        "created_at": row["created_at"],
+        "starred_by_me": bool(row["starred_by_me"]),
+    }
+
+
+async def list_mine(
+    conn: AsyncConnection,
+    *,
+    user_id: int,
+    cursor: tuple[datetime, int] | None,
+    limit: int,
+) -> list[dict]:
+    """Products owned by `user_id`, newest-first.
+
+    Sort: `(created_at DESC, id DESC)` per `api_spec.md` §5.3 / §6.6.
+
+    Fetches `limit + 1` rows so the caller can detect whether a `next`
+    page exists.
+    """
+    p = products_table
+    u = users_table
+    join = p.outerjoin(u, p.c.created_by_user_id == u.c.id)
+    where = [p.c.created_by_user_id == user_id]
+    if cursor is not None:
+        c_at, c_id = cursor
+        where.append(
+            or_(
+                p.c.created_at < c_at,
+                and_(p.c.created_at == c_at, p.c.id < c_id),
+            )
+        )
+    stmt = (
+        select(*_list_item_columns(user_id))
+        .select_from(join)
+        .where(*where)
+        .order_by(p.c.created_at.desc(), p.c.id.desc())
+        .limit(limit + 1)
+    )
+    rows = (await conn.execute(stmt)).mappings().all()
+    return [_row_to_list_item(r) for r in rows]
+
+
+async def list_starred(
+    conn: AsyncConnection,
+    *,
+    user_id: int,
+    cursor: tuple[datetime, int] | None,
+    limit: int,
+) -> list[dict]:
+    """Products starred by `user_id`, most-recently-starred first.
+
+    Sort: `(product_stars.created_at DESC, product_stars.product_id DESC)`
+    per `db_schema.md` §5.3.
+    """
+    p = products_table
+    u = users_table
+    s = product_stars_table
+    join = (
+        s.join(p, s.c.product_id == p.c.id)
+        .outerjoin(u, p.c.created_by_user_id == u.c.id)
+    )
+    where = [s.c.user_id == user_id]
+    if cursor is not None:
+        c_at, c_id = cursor
+        where.append(
+            or_(
+                s.c.created_at < c_at,
+                and_(s.c.created_at == c_at, s.c.product_id < c_id),
+            )
+        )
+    stmt = (
+        select(*_list_item_columns(user_id), s.c.created_at.label("star_created_at"))
+        .select_from(join)
+        .where(*where)
+        .order_by(s.c.created_at.desc(), s.c.product_id.desc())
+        .limit(limit + 1)
+    )
+    rows = (await conn.execute(stmt)).mappings().all()
+    items: list[dict] = []
+    for r in rows:
+        item = _row_to_list_item(r)
+        # By definition every row in this query is starred by the caller.
+        item["starred_by_me"] = True
+        item["_star_created_at"] = r["star_created_at"]
+        items.append(item)
+    return items
+
+
+async def list_search(
+    conn: AsyncConnection,
+    *,
+    user_id: int,
+    q: str,
+    threshold: float,
+    cursor: tuple[float, int] | None,
+    limit: int,
+) -> list[dict]:
+    """Products matching `q` by trigram similarity above `threshold`.
+
+    Sort: `(similarity DESC, id ASC)` per `api_spec.md` §5.3 / §6.6.
+    Subsequent pages must satisfy `(similarity, id) "after"
+    (cursor_sim, cursor_id)` with the asymmetric ordering — strictly
+    less similarity, OR equal similarity with strictly greater id.
+    """
+    p = products_table
+    u = users_table
+    similarity = func.similarity(p.c.name, q)
+    join = p.outerjoin(u, p.c.created_by_user_id == u.c.id)
+    where = [similarity >= threshold]
+    if cursor is not None:
+        c_sim, c_id = cursor
+        where.append(
+            or_(
+                similarity < c_sim,
+                and_(similarity == c_sim, p.c.id > c_id),
+            )
+        )
+    stmt = (
+        select(*_list_item_columns(user_id), similarity.label("similarity"))
+        .select_from(join)
+        .where(*where)
+        .order_by(similarity.desc(), p.c.id.asc())
+        .limit(limit + 1)
+    )
+    rows = (await conn.execute(stmt)).mappings().all()
+    items: list[dict] = []
+    for r in rows:
+        item = _row_to_list_item(r)
+        item["_similarity"] = float(r["similarity"])
+        items.append(item)
+    return items
