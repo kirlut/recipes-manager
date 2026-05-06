@@ -5,17 +5,21 @@ from fastapi import FastAPI
 
 from api import health
 from dal import db
+from logging_config import configure_logging
 from settings import settings
 
-logging.basicConfig(level=settings.log_level.upper())
+configure_logging(settings.log_level)
 logger = logging.getLogger("recipes-manager")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("startup: pinging database at %s:%d", settings.postgres_host, settings.postgres_port)
-    await db.ping()
-    logger.info("startup: database reachable")
+    logger.info(
+        "startup: initializing schema",
+        extra={"postgres_host": settings.postgres_host, "postgres_port": settings.postgres_port},
+    )
+    await db.init_schema()
+    logger.info("startup: schema ready")
     try:
         yield
     finally:
