@@ -28,6 +28,7 @@ executed locally and from a future CI runner.
 | HTTP client | `httpx` | For API tests; supports both sync and async. |
 | Direct DB introspection | `psycopg[binary]` | Sync driver, simple for assertions on schema and seed data. |
 | Browser automation | `pytest-playwright` | Drives Chromium against the full stack for frontend phases. |
+| JWT forgery | `pyjwt` | Used in auth tests (phase 3+) to encode tokens with deliberately invalid `exp` or wrong secret. Same library the backend uses. |
 | Image fixtures | tiny in-test JPEG/PNG bytes | No external assets needed. |
 
 All test deps live under a `[project.optional-dependencies].test` section in

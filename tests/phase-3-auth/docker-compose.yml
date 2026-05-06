@@ -1,0 +1,51 @@
+name: recipes-manager-test-phase-3-auth
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: recipes_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d recipes_test"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-15432}:5432"
+    volumes:
+      - test_pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ../../src/server
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: recipes_test
+      JWT_SECRET: test-secret-do-not-use-in-prod
+      IMAGE_DIR: /uploads
+      SEARCH_SIMILARITY_THRESHOLD: "0.3"
+      LOG_LEVEL: INFO
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    ports:
+      - "127.0.0.1:${BACKEND_HOST_PORT:-18000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - test_uploads:/uploads
+
+volumes:
+  test_pgdata:
+  test_uploads:

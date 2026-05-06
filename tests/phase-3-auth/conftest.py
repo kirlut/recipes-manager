@@ -1,0 +1,92 @@
+"""Phase-3 (auth) test fixtures.
+
+Stack: postgres (host port 15432) + backend (host port 18000). Backend is
+hit directly without nginx, so route paths are unprefixed (`/auth/register`
+not `/api/auth/register`) per `api_spec.md §1.1` and `testing_strategy.md §4.7`.
+
+The `JWT_SECRET` env var is set to the same value the test compose passes
+to the backend so tests can forge tokens (expired, wrong-secret, etc.).
+"""
+
+from __future__ import annotations
+
+import os
+import pathlib
+import sys
+from collections.abc import Iterator
+
+import psycopg
+import pytest
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+os.environ.setdefault("POSTGRES_HOST", "127.0.0.1")
+os.environ.setdefault("POSTGRES_PORT", os.environ.get("POSTGRES_HOST_PORT", "15432"))
+os.environ.setdefault("POSTGRES_USER", "test")
+os.environ.setdefault("POSTGRES_PASSWORD", "test")
+os.environ.setdefault("POSTGRES_DB", "recipes_test")
+os.environ.setdefault("BACKEND_HOST_PORT", "18000")
+os.environ.setdefault("JWT_SECRET", "test-secret-do-not-use-in-prod")
+
+from tests.helpers import api as api_helpers  # noqa: E402
+from tests.helpers.db import db_url, truncate_all  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _clean_db() -> Iterator[None]:
+    truncate_all()
+    yield
+
+
+@pytest.fixture
+def api_base_url() -> str:
+    port = os.environ["BACKEND_HOST_PORT"]
+    return f"http://127.0.0.1:{port}"
+
+
+@pytest.fixture
+def jwt_secret() -> str:
+    return os.environ["JWT_SECRET"]
+
+
+@pytest.fixture
+def pg_conn() -> Iterator[psycopg.Connection]:
+    """Fresh psycopg connection per test, closed on teardown."""
+    with psycopg.connect(db_url(), connect_timeout=10) as conn:
+        yield conn
+
+
+@pytest.fixture
+def make_user(api_base_url: str):
+    """Factory: register + log in a user, return `(user_dict, token)`.
+
+    Each call creates a fresh user via the public API. Pass a unique
+    username per call within a single test to avoid 409s.
+    """
+
+    def _make(
+        username: str = "alice",
+        password: str = "hunter2pwd",
+        full_name: str | None = "Alice Smith",
+    ) -> tuple[dict, str]:
+        reg = api_helpers.auth_register(
+            api_base_url,
+            username=username,
+            password=password,
+            full_name=full_name,
+        )
+        assert reg.status_code == 201, (
+            f"make_user: register failed: {reg.status_code} {reg.text!r}"
+        )
+        login = api_helpers.auth_login(
+            api_base_url, username=username, password=password
+        )
+        assert login.status_code == 200, (
+            f"make_user: login failed: {login.status_code} {login.text!r}"
+        )
+        body = login.json()
+        return body["user"], body["token"]
+
+    return _make
