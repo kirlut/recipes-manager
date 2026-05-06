@@ -11,7 +11,15 @@ test = [
     "httpx>=0.27",
     "psycopg[binary]>=3.2",
     "pyjwt>=2.8",
+    "pytest-playwright>=0.5",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# pytest-base-url (transitive dep of pytest-playwright) defines a session-
+# scoped `base_url` fixture and a session-autouse `_verify_url` fixture that
+# requests it. Phase-1 conftest defines its own (function-scoped) `base_url`
+# for non-Playwright HTTP smoke tests, which then conflicts with the plugin's
+# session-scoped consumer (ScopeMismatch). We don't use the plugin's URL
+# verification, so disable it for the whole suite.
+addopts = "-p no:base_url"
