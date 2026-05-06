@@ -3,7 +3,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from api import health
+from api import auth, health
+from api.errors import register_exception_handlers
 from dal import db
 from logging_config import configure_logging
 from settings import settings
@@ -27,4 +28,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+register_exception_handlers(app)
 app.include_router(health.router)
+app.include_router(auth.router)

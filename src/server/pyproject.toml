@@ -11,6 +11,8 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.4",
     "python-multipart>=0.0.9",
+    "bcrypt>=5.0.0",
+    "pyjwt>=2.12.1",
 ]
 
 [tool.uv]

@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     postgres_db: str
 
     jwt_secret: str = ""
+    jwt_ttl_hours: int = 24
+    bcrypt_cost: int = 12
 
     image_dir: str = "/uploads"
     search_similarity_threshold: float = 0.3
