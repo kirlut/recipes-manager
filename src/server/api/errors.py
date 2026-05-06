@@ -32,6 +32,8 @@ ERROR_PAYLOAD_TOO_LARGE = f"{_BASE_URI}/payload-too-large"
 ERROR_UNSUPPORTED_MEDIA_TYPE = f"{_BASE_URI}/unsupported-media-type"
 ERROR_NO_NUTRITION_FACTS = f"{_BASE_URI}/no-nutrition-facts"
 ERROR_DUPLICATE_NUTRITION_FACT = f"{_BASE_URI}/duplicate-nutrition-fact"
+ERROR_QUANTITY_TYPE_MISMATCH = f"{_BASE_URI}/quantity-type-mismatch"
+ERROR_DUPLICATE_RECIPE_PRODUCT = f"{_BASE_URI}/duplicate-recipe-product"
 ERROR_INTERNAL = f"{_BASE_URI}/internal"
 
 # HTTP status -> default registry URI for generic StarletteHTTPException
@@ -124,6 +126,18 @@ class DuplicateNutritionFactError(AppError):
     title = "Duplicate nutrition fact"
 
 
+class QuantityTypeMismatchError(AppError):
+    type_uri = ERROR_QUANTITY_TYPE_MISMATCH
+    status = 422
+    title = "Quantity type does not match any product nutrition fact"
+
+
+class DuplicateRecipeProductError(AppError):
+    type_uri = ERROR_DUPLICATE_RECIPE_PRODUCT
+    status = 422
+    title = "Duplicate recipe product"
+
+
 class PayloadTooLargeError(AppError):
     type_uri = ERROR_PAYLOAD_TOO_LARGE
     status = 413
@@ -158,6 +172,36 @@ class ServiceValidationError(AppError):
         if violations is not None:
             ext = {"violations": violations}
         super().__init__(detail or self.title, extensions=ext)
+
+
+class RequestValidationFailedError(AppError):
+    """Request-shape validation failure as 400 + `/errors/validation`.
+
+    Used for cross-field checks the route layer enforces after Pydantic
+    has accepted the individual fields (e.g. `q` required when
+    `scope=search`).
+    """
+
+    type_uri = ERROR_VALIDATION
+    status = 400
+    title = "Validation failed"
+
+    def __init__(
+        self,
+        detail: str = "",
+        *,
+        violations: list[dict[str, Any]] | None = None,
+    ) -> None:
+        ext: dict[str, Any] | None = None
+        if violations is not None:
+            ext = {"violations": violations}
+        super().__init__(detail or self.title, extensions=ext)
+
+
+class InvalidCursorError(AppError):
+    type_uri = ERROR_INVALID_CURSOR
+    status = 400
+    title = "Invalid cursor"
 
 
 def _problem_response(body: dict[str, Any], status: int) -> JSONResponse:

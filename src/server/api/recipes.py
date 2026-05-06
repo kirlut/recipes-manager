@@ -1,6 +1,6 @@
-"""Product endpoints: POST/GET/PUT/DELETE /products and /products/{id}/copy.
+"""Recipe endpoints: POST/GET/PUT/DELETE /recipes and /recipes/{id}/copy.
 
-See `api_spec.md` §6.
+See `api_spec.md` §7.
 """
 
 from __future__ import annotations
@@ -12,31 +12,31 @@ from fastapi import APIRouter, Depends, Query, Response, status
 
 from api.dependencies import current_user
 from api.errors import RequestValidationFailedError
-from api.schemas.pagination import ProductListItem
-from api.schemas.products import Product, ProductCreate
-from services import products as products_service
+from api.schemas.pagination import RecipeListItem
+from api.schemas.recipes import Recipe, RecipeCreate
+from services import recipes as recipes_service
 from services import stars as stars_service
 
 router = APIRouter()
 
 
 @router.post(
-    "/products",
+    "/recipes",
     status_code=status.HTTP_201_CREATED,
-    response_model=Product,
+    response_model=Recipe,
 )
-async def create_product(
-    body: ProductCreate,
+async def create_recipe(
+    body: RecipeCreate,
     response: Response,
     user: dict = Depends(current_user),
-) -> Product:
-    product = await products_service.create(user_id=user["id"], body=body)
-    response.headers["Location"] = f"/products/{product['id']}"
-    return Product(**product)
+) -> Recipe:
+    recipe = await recipes_service.create(user_id=user["id"], body=body)
+    response.headers["Location"] = f"/recipes/{recipe['id']}"
+    return Recipe(**recipe)
 
 
-@router.get("/products")
-async def list_products(
+@router.get("/recipes")
+async def list_recipes(
     scope: Literal["mine", "starred", "search"] = Query(...),
     q: str | None = Query(None, max_length=200),
     cursor: str | None = Query(None),
@@ -48,19 +48,19 @@ async def list_products(
             "`q` is required and non-empty when scope=search.",
             violations=[{"field": "q", "message": "required when scope=search"}],
         )
-    page = await products_service.list_products(
+    page = await recipes_service.list_recipes(
         user_id=user["id"],
         scope=scope,
         q=q,
         cursor_token=cursor,
         limit=limit,
     )
-    items = [ProductListItem(**item).model_dump(mode="json") for item in page["items"]]
-    self_url = _build_url("/api/products", scope=scope, q=q, cursor=cursor, limit=limit)
+    items = [RecipeListItem(**item).model_dump(mode="json") for item in page["items"]]
+    self_url = _build_url("/api/recipes", scope=scope, q=q, cursor=cursor, limit=limit)
     body: dict = {"items": items, "self": self_url}
     if page["next_cursor"] is not None:
         body["next"] = _build_url(
-            "/api/products",
+            "/api/recipes",
             scope=scope,
             q=q,
             cursor=page["next_cursor"],
@@ -69,74 +69,74 @@ async def list_products(
     return body
 
 
-@router.get("/products/{product_id}", response_model=Product)
-async def get_product(
-    product_id: int,
+@router.get("/recipes/{recipe_id}", response_model=Recipe)
+async def get_recipe(
+    recipe_id: int,
     user: dict = Depends(current_user),
-) -> Product:
-    product = await products_service.get(product_id=product_id, user_id=user["id"])
-    return Product(**product)
+) -> Recipe:
+    recipe = await recipes_service.get(recipe_id=recipe_id, user_id=user["id"])
+    return Recipe(**recipe)
 
 
-@router.put("/products/{product_id}", response_model=Product)
-async def replace_product(
-    product_id: int,
-    body: ProductCreate,
+@router.put("/recipes/{recipe_id}", response_model=Recipe)
+async def replace_recipe(
+    recipe_id: int,
+    body: RecipeCreate,
     user: dict = Depends(current_user),
-) -> Product:
-    product = await products_service.replace(
-        product_id=product_id, user_id=user["id"], body=body
+) -> Recipe:
+    recipe = await recipes_service.replace(
+        recipe_id=recipe_id, user_id=user["id"], body=body
     )
-    return Product(**product)
+    return Recipe(**recipe)
 
 
-@router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_product(
-    product_id: int,
+@router.delete("/recipes/{recipe_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_recipe(
+    recipe_id: int,
     user: dict = Depends(current_user),
 ) -> Response:
-    await products_service.delete(product_id=product_id, user_id=user["id"])
+    await recipes_service.delete(recipe_id=recipe_id, user_id=user["id"])
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
-    "/products/{product_id}/copy",
+    "/recipes/{recipe_id}/copy",
     status_code=status.HTTP_201_CREATED,
-    response_model=Product,
+    response_model=Recipe,
 )
-async def copy_product(
-    product_id: int,
+async def copy_recipe(
+    recipe_id: int,
     response: Response,
     user: dict = Depends(current_user),
-) -> Product:
-    product = await products_service.copy(
-        source_id=product_id, user_id=user["id"]
+) -> Recipe:
+    recipe = await recipes_service.copy(
+        source_id=recipe_id, user_id=user["id"]
     )
-    response.headers["Location"] = f"/products/{product['id']}"
-    return Product(**product)
+    response.headers["Location"] = f"/recipes/{recipe['id']}"
+    return Recipe(**recipe)
 
 
 @router.put(
-    "/products/{product_id}/star",
+    "/recipes/{recipe_id}/star",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def star_product(
-    product_id: int,
+async def star_recipe(
+    recipe_id: int,
     user: dict = Depends(current_user),
 ) -> Response:
-    await stars_service.star_product(user_id=user["id"], product_id=product_id)
+    await stars_service.star_recipe(user_id=user["id"], recipe_id=recipe_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete(
-    "/products/{product_id}/star",
+    "/recipes/{recipe_id}/star",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def unstar_product(
-    product_id: int,
+async def unstar_recipe(
+    recipe_id: int,
     user: dict = Depends(current_user),
 ) -> Response:
-    await stars_service.unstar_product(user_id=user["id"], product_id=product_id)
+    await stars_service.unstar_recipe(user_id=user["id"], recipe_id=recipe_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

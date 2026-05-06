@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from api.errors import (
     DuplicateNutritionFactError,
     ForbiddenNotOwnerError,
+    InvalidCursorError,
     NoNutritionFactsError,
     NotFoundError,
     ServiceValidationError,
@@ -15,6 +16,10 @@ from api.schemas.products import ProductCreate
 from dal import nutrition_fact_types as nft_dal
 from dal import products as products_dal
 from dal.connections import read_only, transaction
+from services import cursor as cursor_svc
+from settings import settings
+
+Scope = Literal["mine", "starred", "search"]
 
 
 def _facts_to_dicts(body: ProductCreate) -> list[dict[str, Any]]:
@@ -68,9 +73,12 @@ async def _validate_facts(
     return facts
 
 
-def _wrap_for_response(row: dict) -> dict:
-    """Fill in `starred_by_me` (always False until phase 6)."""
-    return {**row, "starred_by_me": False}
+async def _wrap_for_response(conn, row: dict, *, caller_user_id: int) -> dict:
+    """Attach `starred_by_me` for the caller (per `api_spec.md` §3.5)."""
+    starred = await products_dal.is_starred_by(
+        conn, user_id=caller_user_id, product_id=row["id"]
+    )
+    return {**row, "starred_by_me": starred}
 
 
 async def create(*, user_id: int, body: ProductCreate) -> dict:
@@ -86,25 +94,23 @@ async def create(*, user_id: int, body: ProductCreate) -> dict:
             conn, product_id=product["id"], facts=facts
         )
         full = await products_dal.get_product_with_facts(conn, product["id"])
-    assert full is not None
-    return _wrap_for_response(full)
+        assert full is not None
+        return await _wrap_for_response(conn, full, caller_user_id=user_id)
 
 
-async def get(product_id: int) -> dict:
+async def get(*, product_id: int, user_id: int) -> dict:
     async with read_only() as conn:
         full = await products_dal.get_product_with_facts(conn, product_id)
-    if full is None:
-        raise NotFoundError(f"Product {product_id} not found.")
-    return _wrap_for_response(full)
+        if full is None:
+            raise NotFoundError(f"Product {product_id} not found.")
+        return await _wrap_for_response(conn, full, caller_user_id=user_id)
 
 
 async def replace(
     *, product_id: int, user_id: int, body: ProductCreate
 ) -> dict:
     async with transaction() as conn:
-        owner_id = await _require_owner(conn, product_id, user_id)
-        del owner_id  # silence unused warning; the call raises if not owner
-
+        await _require_owner(conn, product_id, user_id)
         facts = await _validate_facts(conn, body)
 
         await products_dal.update_product_fields(
@@ -118,8 +124,8 @@ async def replace(
             conn, product_id=product_id, facts=facts
         )
         full = await products_dal.get_product_with_facts(conn, product_id)
-    assert full is not None
-    return _wrap_for_response(full)
+        assert full is not None
+        return await _wrap_for_response(conn, full, caller_user_id=user_id)
 
 
 async def delete(*, product_id: int, user_id: int) -> None:
@@ -152,8 +158,90 @@ async def copy(*, source_id: int, user_id: int) -> dict:
             conn, product_id=new["id"], facts=cloned_facts
         )
         full = await products_dal.get_product_with_facts(conn, new["id"])
-    assert full is not None
-    return _wrap_for_response(full)
+        assert full is not None
+        return await _wrap_for_response(conn, full, caller_user_id=user_id)
+
+
+async def list_products(
+    *,
+    user_id: int,
+    scope: Scope,
+    q: str | None,
+    cursor_token: str | None,
+    limit: int,
+) -> dict:
+    """Return `{items, next?}` for the requested scope.
+
+    The `self`/`next` URL fields are constructed by the API layer where
+    the request URL is known. This service returns the raw items + an
+    optional `next_cursor` token for the API layer to format.
+    """
+    async with read_only() as conn:
+        if scope == "search":
+            assert q is not None and q != ""
+            cursor: tuple[float, int] | None = (
+                cursor_svc.decode_search(cursor_token)
+                if cursor_token is not None
+                else None
+            )
+            rows = await products_dal.list_search(
+                conn,
+                user_id=user_id,
+                q=q,
+                threshold=settings.search_similarity_threshold,
+                cursor=cursor,
+                limit=limit,
+            )
+            has_more = len(rows) > limit
+            kept = rows[:limit]
+            next_token: str | None = None
+            if has_more:
+                last = kept[-1]
+                next_token = cursor_svc.encode_search(
+                    similarity=last["_similarity"], item_id=last["id"]
+                )
+            for item in kept:
+                item.pop("_similarity", None)
+            return {"items": kept, "next_cursor": next_token}
+
+        # Chronological: mine | starred.
+        chrono_cursor: tuple[Any, int] | None = (
+            cursor_svc.decode_chronological(cursor_token)
+            if cursor_token is not None
+            else None
+        )
+        if scope == "mine":
+            rows = await products_dal.list_mine(
+                conn, user_id=user_id, cursor=chrono_cursor, limit=limit
+            )
+            has_more = len(rows) > limit
+            kept = rows[:limit]
+            next_token = None
+            if has_more:
+                last = kept[-1]
+                next_token = cursor_svc.encode_chronological(
+                    when=last["created_at"], item_id=last["id"]
+                )
+            return {"items": kept, "next_cursor": next_token}
+
+        if scope == "starred":
+            rows = await products_dal.list_starred(
+                conn, user_id=user_id, cursor=chrono_cursor, limit=limit
+            )
+            has_more = len(rows) > limit
+            kept = rows[:limit]
+            next_token = None
+            if has_more:
+                last = kept[-1]
+                next_token = cursor_svc.encode_chronological(
+                    when=last["_star_created_at"], item_id=last["id"]
+                )
+            for item in kept:
+                item.pop("_star_created_at", None)
+            return {"items": kept, "next_cursor": next_token}
+
+        # Should be unreachable thanks to Pydantic Literal validation.
+        raise InvalidCursorError(f"unknown scope: {scope!r}")
 
 
 async def _require_owner(conn, product_id: int, user_id: int) -> int:
