@@ -16,9 +16,15 @@ The API follows the Zalando RESTful API Guidelines.
 
 ### 1.1 URL structure
 
-- **Base path**: all endpoints are mounted under `/api`. nginx forwards `/api/*`
-  to the backend. The backend itself does not prefix paths with `/api`; the
-  prefix is added by the FastAPI router (`app.include_router(..., prefix="/api")`).
+- **Base path**: all endpoints are mounted under `/api` from the public
+  perspective. nginx forwards `/api/*` to the backend, **stripping the
+  `/api/` prefix** (`location /api/ { proxy_pass http://backend:8000/; }` —
+  the trailing slash on `proxy_pass` strips the prefix before forwarding).
+  The backend's own routes therefore do **not** include `/api`: route
+  decorators are e.g. `@router.get("/health")`, `@router.get("/auth/login")`,
+  and routers are included without a `prefix=` argument
+  (`app.include_router(health.router)`). External clients always see
+  `/api/...` URLs; internal localhost-on-the-backend paths are unprefixed.
 - **Resource names**: plural nouns. `products`, `recipes`, `users`,
   `nutrition-fact-types`, `shopping-list`, `uploads`.
 - **Path segments**: lowercase, kebab-case where multi-word

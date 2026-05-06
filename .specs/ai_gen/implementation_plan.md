@@ -80,9 +80,12 @@ containers and `GET http://localhost:8080/api/health` returns 200.
   root `.env.example`.
 - Backend Dockerfile (`python:3.12-slim` base, `uv` for deps, runs the
   entrypoint).
-- Backend entrypoint serves a single endpoint: `GET /health` (no `/api`
-  prefix at the FastAPI level — nginx adds `/api`). The router is mounted
-  with `prefix="/api"` so the externally-visible URL is `/api/health`.
+- Backend entrypoint serves a single endpoint: `GET /health` with no
+  `/api` prefix on the FastAPI side. nginx forwards `/api/*` to the backend
+  and strips the `/api/` prefix in `proxy_pass`, so the externally-visible
+  URL `/api/health` reaches the backend's `/health`. This convention
+  applies to all future routers as well — none of them use
+  `prefix="/api"`. (See `api_spec.md` §1.1.)
 - The backend connects to Postgres on startup using `POSTGRES_*` env vars and
   fails fast if the connection cannot be established.
 - nginx + statics container: `nginx:alpine` base + a placeholder
@@ -104,7 +107,6 @@ containers and `GET http://localhost:8080/api/health` returns 200.
 .gitignore                              # py, node, .env, .venv, build artifacts
 docker-compose.yml                      # 3 services + uploads volume
 .env.example
-pyproject.toml                          # repo-root, tests-only; [project.optional-dependencies].test
 src/server/Dockerfile
 src/server/pyproject.toml                # uv-managed; runtime deps only: fastapi, uvicorn, asyncpg, sqlalchemy[asyncio], pydantic, pydantic-settings
 src/server/uv.lock
@@ -135,12 +137,14 @@ tests/phase-1-infra/test_postgres_reachable.py
 - Run `uv init` (or write `pyproject.toml` directly) inside `src/server/`.
   Add `fastapi`, `uvicorn[standard]`, `sqlalchemy[asyncio]`, `asyncpg`,
   `pydantic`, `pydantic-settings`, `python-multipart`.
-- Create a separate **repo-root** `pyproject.toml` carrying test-only
-  deps under `[project.optional-dependencies].test`: `pytest`,
-  `pytest-asyncio`, `httpx`, `psycopg[binary]`. This sits at the repo root
-  (not under `src/server/`) so `uv run pytest` from any `tests/phase-N-name/`
-  directory finds it via uv's parent-directory lookup. Install with
-  `uv sync --extra test` from the repo root.
+- The repo-root `pyproject.toml` (test-only deps under
+  `[project.optional-dependencies].test`: `pytest`, `pytest-asyncio`,
+  `httpx`, `psycopg[binary]`) is owned by the test session that
+  authors `tests/phase-1-infra/` and is already in place by the time
+  Phase 1 implementation begins. Install with `uv sync --extra test`
+  from the repo root. It sits at the repo root (not under `src/server/`)
+  so `uv run pytest` from any `tests/phase-N-name/` directory finds it
+  via uv's parent-directory lookup.
 - Run `npm create vite@latest web -- --template react-ts` inside `src/client/`.
 - Add `.env.example` with `POSTGRES_*`, `JWT_SECRET=`, `IMAGE_DIR=/uploads`,
   `HOST_PORT=8080`, `SEARCH_SIMILARITY_THRESHOLD=0.3`. Document that the

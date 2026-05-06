@@ -15,3 +15,15 @@ __pycache__/
 # Editors
 .vscode/
 .idea/
+
+# Node / frontend build artifacts (src/client)
+node_modules/
+dist/
+# TypeScript incremental build cache (tsc -b)
+*.tsbuildinfo
+# npm debug logs
+npm-debug.log*
+
+# Local env (root). .env.example IS checked in.
+.env
+

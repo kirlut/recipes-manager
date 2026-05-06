@@ -1,0 +1,16 @@
+[project]
+name = "recipes-manager-tests"
+version = "0"
+description = "Repo-root test-only project. Hosts integration test dependencies for tests/phase-N-*."
+requires-python = ">=3.12"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+    "psycopg[binary]>=3.2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
