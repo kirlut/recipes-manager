@@ -36,7 +36,11 @@ export function Layout({ children }: { children: ReactNode }) {
           <span aria-hidden="true">☰</span>
         </button>
         <div className="flex-1 px-2">
-          <Link to="/products" className="btn btn-ghost text-xl normal-case">
+          <Link
+            to="/products"
+            aria-label="Home"
+            className="btn btn-ghost text-xl normal-case"
+          >
             recipes-manager
           </Link>
         </div>
@@ -110,6 +114,28 @@ export function Layout({ children }: { children: ReactNode }) {
                 }
               >
                 My Products
+              </NavLink>
+            </li>
+            <li>
+              <NavLink
+                to="/recipes"
+                onClick={() => setDrawerOpen(false)}
+                className={({ isActive }) =>
+                  isActive ? "active font-semibold" : ""
+                }
+              >
+                My Recipes
+              </NavLink>
+            </li>
+            <li>
+              <NavLink
+                to="/shopping-list"
+                onClick={() => setDrawerOpen(false)}
+                className={({ isActive }) =>
+                  isActive ? "active font-semibold" : ""
+                }
+              >
+                Shopping List
               </NavLink>
             </li>
           </ul>

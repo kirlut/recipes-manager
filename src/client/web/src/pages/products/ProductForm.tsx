@@ -83,9 +83,9 @@ export function ProductForm({ mode }: { mode: "create" | "edit" }) {
       if (mode === "create") return createProduct(body);
       return updateProduct(id as number, body);
     },
-    onSuccess: () => {
+    onSuccess: (product) => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
-      navigate("/products");
+      navigate(`/products/${product.id}`);
     },
     onError: (err) => setSubmitError(err),
   });
@@ -276,20 +276,25 @@ function FactSection({
                 ))}
               </select>
             </label>
-            <label className="form-control">
-              <span className="label-text mb-1">
-                Amount{ft ? ` (${ft.unit})` : ""}
-              </span>
-              <input
-                type="number"
-                step="any"
-                min="0"
-                className="input input-bordered"
-                value={row.amount}
-                onChange={(e) => update(i, { amount: e.target.value })}
-                required
-              />
-            </label>
+            <div className="flex items-end gap-2">
+              <label className="form-control flex-1 min-w-0">
+                <span className="label-text mb-1">Amount</span>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  className="input input-bordered"
+                  value={row.amount}
+                  onChange={(e) => update(i, { amount: e.target.value })}
+                  required
+                />
+              </label>
+              {ft && (
+                <span className="text-sm opacity-70 pb-3" aria-hidden="true">
+                  {ft.unit}
+                </span>
+              )}
+            </div>
             <button
               type="button"
               className="btn btn-sm btn-ghost"
