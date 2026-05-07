@@ -6,6 +6,10 @@ import { Register } from "./pages/Register";
 import { ProductDetail } from "./pages/products/ProductDetail";
 import { ProductForm } from "./pages/products/ProductForm";
 import { ProductsList } from "./pages/products/ProductsList";
+import { RecipeDetail } from "./pages/recipes/RecipeDetail";
+import { RecipeForm } from "./pages/recipes/RecipeForm";
+import { RecipesList } from "./pages/recipes/RecipesList";
+import { ShoppingListPage } from "./pages/shopping-list/ShoppingListPage";
 
 export default function App() {
   return (
@@ -56,6 +60,56 @@ export default function App() {
           <RequireAuth>
             <Layout>
               <ProductForm mode="edit" />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/recipes"
+        element={
+          <RequireAuth>
+            <Layout>
+              <RecipesList />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/recipes/new"
+        element={
+          <RequireAuth>
+            <Layout>
+              <RecipeForm mode="create" />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/recipes/:id"
+        element={
+          <RequireAuth>
+            <Layout>
+              <RecipeDetail />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/recipes/:id/edit"
+        element={
+          <RequireAuth>
+            <Layout>
+              <RecipeForm mode="edit" />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/shopping-list"
+        element={
+          <RequireAuth>
+            <Layout>
+              <ShoppingListPage />
             </Layout>
           </RequireAuth>
         }
